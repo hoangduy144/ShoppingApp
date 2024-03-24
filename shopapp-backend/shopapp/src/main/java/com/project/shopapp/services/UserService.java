@@ -1,6 +1,7 @@
 package com.project.shopapp.services;
 
 import com.project.shopapp.components.JwtTokenUtils;
+import com.project.shopapp.components.LocalizationUtils;
 import com.project.shopapp.dtos.UserDTO;
 import com.project.shopapp.exceptions.DataNotFoundException;
 import com.project.shopapp.exceptions.PermissionDenyException;
@@ -8,6 +9,7 @@ import com.project.shopapp.models.Role;
 import com.project.shopapp.models.User;
 import com.project.shopapp.repositories.RoleRepository;
 import com.project.shopapp.repositories.UserRepository;
+import com.project.shopapp.utils.MessageKeys;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -27,6 +29,8 @@ public class UserService implements IUserService{
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenUtils jwtTokenUtils;
     private final AuthenticationManager authenticationManager;
+    private final LocalizationUtils localizationUtils;
+
     @Override
     @Transactional
     public User createUser(UserDTO userDTO) throws Exception {
@@ -49,6 +53,7 @@ public class UserService implements IUserService{
                 .dateOfBirth(userDTO.getDateOfBirth())
                 .facebookAccountId(userDTO.getFacebookAccountId())
                 .googleAccountId(userDTO.getGoogleAccountId())
+                .active(true)
                 .build();
 
         newUser.setRole(role);
@@ -62,10 +67,10 @@ public class UserService implements IUserService{
     }
 
     @Override
-    public String login(String phoneNumber, String password) throws Exception {
+    public String login(String phoneNumber, String password, Long roleId) throws Exception {
         Optional<User> optionalUser = userRepository.findByPhoneNumber(phoneNumber);
         if(optionalUser.isEmpty()){
-            throw new DataNotFoundException("Invalid phonenumber / password");
+            throw new DataNotFoundException(localizationUtils.getLocalizedMessage(MessageKeys.WRONG_PHONE_PASSWORD));
         }
         User existingUser = optionalUser.get();
 
@@ -75,6 +80,14 @@ public class UserService implements IUserService{
             if(!passwordEncoder.matches(password,existingUser.getPassword())){
                 throw new BadCredentialsException("Wrong phone number or password");
             }
+        }
+
+        Optional<Role> optionalRole = roleRepository.findById(roleId);
+        if(optionalRole.isEmpty() || !roleId.equals(existingUser.getRole().getId())) {
+            throw new DataNotFoundException(localizationUtils.getLocalizedMessage(MessageKeys.ROLE_DOES_NOT_EXISTS));
+        }
+        if(!optionalUser.get().isActive()) {
+            throw new DataNotFoundException(localizationUtils.getLocalizedMessage(MessageKeys.USER_IS_LOCKED));
         }
 
         UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
